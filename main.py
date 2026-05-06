@@ -56,10 +56,11 @@ async def translate(
             ydl_opts = {
                 "outtmpl": os.path.join(job_dir, "input.%(ext)s").replace("\\", "/"),
                 "format": "mp4/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-                "cookiesfrombrowser": ("chrome",),
                 "quiet": True,
                 "no_warnings": False,
             }
+            if os.name == "nt":
+                ydl_opts["cookiesfrombrowser"] = ("chrome",)
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
         elif file:
