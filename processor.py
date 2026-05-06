@@ -98,24 +98,31 @@ def process_job(job_id, source_lang, target_lang):
 
         output_path = os.path.join(JOBS_DIR, job_id, "output.mp4")
 
-        escaped = srt_path.replace("\\", "/").replace(":", "\\:")
+        # Escape path for ffmpeg subtitles filter: backslashes → forward slashes, colons escaped
+        escaped = srt_path.replace("\\", "/").replace(":", "\\\\:")
+
+        # force_style commas must be escaped with \ when not going through a shell
+        style = "FontSize=24\\,PrimaryColour=&H00FFFFFF\\,OutlineColour=&H00000000\\,Outline=2\\,Shadow=1"
 
         cmd = [
-            ffmpeg_exe, "-y", "-i", input_path,
-            "-vf", f"subtitles={escaped}:force_style='FontSize=20,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=2'",
+            ffmpeg_exe, "-y",
+            "-i", input_path,
+            "-vf", f"subtitles={escaped}:force_style={style}",
+            "-c:a", "copy",
             output_path
         ]
 
-        result2 = subprocess.run(cmd, capture_output=True, text=True)
+        result2 = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
 
         if result2.returncode != 0:
             jobs[job_id]["status"] = "error"
-            jobs[job_id]["message"] = result2.stderr[-500:]
+            jobs[job_id]["message"] = result2.stderr[-800:]
         else:
             jobs[job_id]["status"] = "done"
             jobs[job_id]["progress"] = 100
             jobs[job_id]["output_path"] = output_path
-            jobs[job_id]["message"] = "Done!"
+            # Store last 300 chars of stderr for debugging even on success
+            jobs[job_id]["message"] = "Done! | " + result2.stderr[-300:].replace("\n", " ")
 
     except Exception as e:
         jobs[job_id]["status"] = "error"
