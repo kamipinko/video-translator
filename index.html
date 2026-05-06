@@ -1,0 +1,300 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VIDEO TRANSLATOR</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0a0a0a;
+      color: #f0f0f0;
+      font-family: 'Courier New', monospace;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .top-bar {
+      width: 100%;
+      height: 4px;
+      background: #e63946;
+      clip-path: polygon(0 0, 100% 0, 97% 100%, 0 100%);
+    }
+    .header {
+      text-align: center;
+      padding: 2.5rem 1rem 1.5rem;
+    }
+    .header h1 {
+      color: #c8a951;
+      font-size: 2rem;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+    .header p {
+      color: #666;
+      font-size: 0.75rem;
+      letter-spacing: 0.2em;
+      margin-top: 0.4rem;
+    }
+    .card {
+      position: relative;
+      width: 100%;
+      max-width: 700px;
+      border: 1px solid #c8a951;
+      padding: 2rem;
+      margin: 0 1rem 3rem;
+    }
+    .card-corner {
+      position: absolute;
+      top: -1px;
+      left: -1px;
+      width: 32px;
+      height: 32px;
+      background: #c8a951;
+      clip-path: polygon(0 0, 100% 0, 0 100%);
+    }
+    .tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; }
+    .tab-btn {
+      background: transparent;
+      border: 1px solid #c8a951;
+      color: #c8a951;
+      font-family: 'Courier New', monospace;
+      font-size: 0.8rem;
+      letter-spacing: 0.15em;
+      padding: 0.4rem 1.2rem;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .tab-btn.active { background: #c8a951; color: #0a0a0a; }
+    .tab-btn:hover:not(.active) { background: rgba(200, 169, 81, 0.1); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    input[type="text"], input[type="file"], select {
+      width: 100%;
+      background: #111;
+      border: 1px solid #333;
+      color: #f0f0f0;
+      font-family: 'Courier New', monospace;
+      font-size: 0.9rem;
+      padding: 0.6rem 0.8rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input[type="text"]:focus, select:focus { border-color: #c8a951; }
+    input[type="file"] { border: 1px dashed #c8a951; cursor: pointer; padding: 1rem 0.8rem; }
+    input[type="file"]::-webkit-file-upload-button {
+      background: #c8a951;
+      color: #0a0a0a;
+      border: none;
+      font-family: 'Courier New', monospace;
+      font-size: 0.8rem;
+      letter-spacing: 0.1em;
+      padding: 0.3rem 0.8rem;
+      cursor: pointer;
+      margin-right: 0.8rem;
+    }
+    select option { background: #111; }
+    .lang-row { display: flex; align-items: flex-end; gap: 1rem; margin-top: 1.5rem; }
+    .lang-group { flex: 1; }
+    .lang-group label { display: block; font-size: 0.7rem; letter-spacing: 0.2em; color: #888; margin-bottom: 0.4rem; }
+    .lang-arrow { color: #c8a951; font-size: 1.4rem; padding-bottom: 0.5rem; flex-shrink: 0; }
+    .translate-btn {
+      display: block;
+      width: 100%;
+      margin-top: 1.5rem;
+      background: transparent;
+      border: 2px solid #c8a951;
+      color: #c8a951;
+      font-family: 'Courier New', monospace;
+      font-size: 1.1rem;
+      letter-spacing: 0.2em;
+      padding: 1rem;
+      cursor: pointer;
+      text-transform: uppercase;
+      transition: background 0.15s, color 0.15s;
+    }
+    .translate-btn:hover { background: #c8a951; color: #0a0a0a; }
+    .translate-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    #progress-section { display: none; margin-top: 1.5rem; border-top: 1px solid #222; padding-top: 1.5rem; }
+    #status-text { font-size: 0.8rem; letter-spacing: 0.1em; color: #aaa; margin-bottom: 0.6rem; }
+    .progress-bar-outer { width: 100%; height: 6px; background: #1a1a1a; position: relative; }
+    .progress-bar-inner { height: 100%; background: #c8a951; width: 0%; transition: width 0.4s ease; }
+    #download-btn {
+      display: none;
+      width: 100%;
+      margin-top: 1rem;
+      background: #c8a951;
+      border: none;
+      color: #0a0a0a;
+      font-family: 'Courier New', monospace;
+      font-size: 1rem;
+      letter-spacing: 0.2em;
+      padding: 0.8rem;
+      cursor: pointer;
+      text-decoration: none;
+      text-align: center;
+      text-transform: uppercase;
+    }
+    #download-btn:hover { background: #e0c070; }
+    #error-text { display: none; margin-top: 0.8rem; color: #e63946; font-size: 0.8rem; white-space: pre-wrap; word-break: break-all; }
+    .divider { width: 100%; height: 1px; background: linear-gradient(90deg, #c8a951 0%, transparent 100%); margin: 1.5rem 0 0; }
+  </style>
+</head>
+<body>
+  <div class="top-bar"></div>
+  <div class="header">
+    <h1>Video Translator</h1>
+    <p>SUBTITLE GENERATION &amp; TRANSLATION</p>
+  </div>
+  <div class="card">
+    <div class="card-corner"></div>
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="url">URL</button>
+      <button class="tab-btn" data-tab="upload">UPLOAD</button>
+    </div>
+    <div id="tab-url" class="tab-panel active">
+      <input type="text" id="url-input" placeholder="Paste video URL (YouTube, Vimeo, etc.)" />
+    </div>
+    <div id="tab-upload" class="tab-panel">
+      <input type="file" id="file-input" accept="video/*" />
+    </div>
+    <div class="lang-row">
+      <div class="lang-group">
+        <label>FROM:</label>
+        <select id="source-lang">
+          <option value="auto">Auto-detect</option>
+          <option value="en">English</option>
+          <option value="es">Spanish</option>
+          <option value="fr">French</option>
+          <option value="de">German</option>
+          <option value="it">Italian</option>
+          <option value="pt">Portuguese</option>
+          <option value="ru">Russian</option>
+          <option value="zh">Chinese</option>
+          <option value="ja">Japanese</option>
+          <option value="ko">Korean</option>
+          <option value="ar">Arabic</option>
+          <option value="hi">Hindi</option>
+          <option value="nl">Dutch</option>
+          <option value="pl">Polish</option>
+          <option value="tr">Turkish</option>
+          <option value="sv">Swedish</option>
+          <option value="da">Danish</option>
+          <option value="fi">Finnish</option>
+          <option value="no">Norwegian</option>
+          <option value="id">Indonesian</option>
+        </select>
+      </div>
+      <div class="lang-arrow">&#8594;</div>
+      <div class="lang-group">
+        <label>TO:</label>
+        <select id="target-lang">
+          <option value="en" selected>English</option>
+          <option value="es">Spanish</option>
+          <option value="fr">French</option>
+          <option value="de">German</option>
+          <option value="it">Italian</option>
+          <option value="pt">Portuguese</option>
+          <option value="ru">Russian</option>
+          <option value="zh">Chinese</option>
+          <option value="ja">Japanese</option>
+          <option value="ko">Korean</option>
+          <option value="ar">Arabic</option>
+          <option value="hi">Hindi</option>
+          <option value="nl">Dutch</option>
+          <option value="pl">Polish</option>
+          <option value="tr">Turkish</option>
+          <option value="sv">Swedish</option>
+          <option value="da">Danish</option>
+          <option value="fi">Finnish</option>
+          <option value="no">Norwegian</option>
+          <option value="id">Indonesian</option>
+        </select>
+      </div>
+    </div>
+    <button class="translate-btn" id="translate-btn">TRANSLATE</button>
+    <div id="progress-section">
+      <div class="divider"></div>
+      <div style="margin-top:1rem;">
+        <div id="status-text">Initializing...</div>
+        <div class="progress-bar-outer">
+          <div class="progress-bar-inner" id="progress-bar"></div>
+        </div>
+        <a id="download-btn" href="#" download="translated.mp4">DOWNLOAD TRANSLATED VIDEO</a>
+        <div id="error-text"></div>
+      </div>
+    </div>
+  </div>
+  <script>
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    tabBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        tabBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+      });
+    });
+    let pollInterval = null;
+    document.getElementById('translate-btn').addEventListener('click', async () => {
+      const activeTab = document.querySelector('.tab-btn.active').dataset.tab;
+      const sourceLang = document.getElementById('source-lang').value;
+      const targetLang = document.getElementById('target-lang').value;
+      const formData = new FormData();
+      formData.append('source_lang', sourceLang);
+      formData.append('target_lang', targetLang);
+      if (activeTab === 'url') {
+        const url = document.getElementById('url-input').value.trim();
+        if (!url) { alert('Please enter a video URL.'); return; }
+        formData.append('url', url);
+      } else {
+        const fileInput = document.getElementById('file-input');
+        if (!fileInput.files.length) { alert('Please select a video file.'); return; }
+        formData.append('file', fileInput.files[0]);
+      }
+      document.getElementById('translate-btn').disabled = true;
+      document.getElementById('progress-section').style.display = 'block';
+      document.getElementById('download-btn').style.display = 'none';
+      document.getElementById('error-text').style.display = 'none';
+      document.getElementById('progress-bar').style.width = '0%';
+      document.getElementById('status-text').textContent = 'Submitting job...';
+      let jobId;
+      try {
+        const res = await fetch('/translate', { method: 'POST', body: formData });
+        let data;
+        try { data = await res.json(); } catch { throw new Error('Server error (status ' + res.status + ')'); }
+        if (!res.ok || !data.job_id) throw new Error(data.error || 'Failed to start job');
+        jobId = data.job_id;
+      } catch (e) {
+        document.getElementById('error-text').textContent = 'Error: ' + e.message;
+        document.getElementById('error-text').style.display = 'block';
+        document.getElementById('translate-btn').disabled = false;
+        return;
+      }
+      if (pollInterval) clearInterval(pollInterval);
+      pollInterval = setInterval(async () => {
+        try {
+          const res = await fetch('/status/' + jobId);
+          const data = await res.json();
+          document.getElementById('progress-bar').style.width = (data.progress || 0) + '%';
+          document.getElementById('status-text').textContent = data.message || '';
+          if (data.status === 'done') {
+            clearInterval(pollInterval);
+            const dlBtn = document.getElementById('download-btn');
+            dlBtn.href = '/download/' + jobId;
+            dlBtn.style.display = 'block';
+            document.getElementById('translate-btn').disabled = false;
+          } else if (data.status === 'error') {
+            clearInterval(pollInterval);
+            document.getElementById('error-text').textContent = data.message || 'An error occurred.';
+            document.getElementById('error-text').style.display = 'block';
+            document.getElementById('translate-btn').disabled = false;
+          }
+        } catch (e) {}
+      }, 2000);
+    });
+  </script>
+</body>
+</html>

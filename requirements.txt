@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+openai-whisper
+deep-translator
+yt-dlp
+python-multipart
+imageio-ffmpeg
