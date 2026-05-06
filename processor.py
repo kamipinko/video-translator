@@ -20,6 +20,11 @@ def fmt_time(seconds):
 
 
 def _get_ffmpeg():
+    # Prefer system ffmpeg (has libass for subtitle burning)
+    import shutil
+    system_ffmpeg = shutil.which("ffmpeg")
+    if system_ffmpeg:
+        return system_ffmpeg
     import imageio_ffmpeg
     return imageio_ffmpeg.get_ffmpeg_exe()
 
