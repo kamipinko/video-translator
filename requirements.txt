@@ -1,6 +1,6 @@
 fastapi
 uvicorn[standard]
-openai-whisper
+faster-whisper
 deep-translator
 yt-dlp
 python-multipart

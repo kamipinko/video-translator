@@ -1,8 +1,7 @@
-import whisper
-import numpy as np
 import subprocess
 import threading
 import os
+import gc
 from deep_translator import GoogleTranslator
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -20,25 +19,12 @@ def fmt_time(seconds):
 
 
 def _get_ffmpeg():
-    # Prefer system ffmpeg (has libass for subtitle burning)
     import shutil
     system_ffmpeg = shutil.which("ffmpeg")
     if system_ffmpeg:
         return system_ffmpeg
     import imageio_ffmpeg
     return imageio_ffmpeg.get_ffmpeg_exe()
-
-
-def load_audio_with_ffmpeg(ffmpeg_exe, input_path, sr=16000):
-    """Extract audio using our known ffmpeg path, return float32 numpy array."""
-    cmd = [
-        ffmpeg_exe, "-nostdin", "-threads", "0",
-        "-i", input_path,
-        "-f", "s16le", "-ac", "1", "-acodec", "pcm_s16le", "-ar", str(sr),
-        "-"
-    ]
-    out = subprocess.run(cmd, capture_output=True, check=True).stdout
-    return np.frombuffer(out, dtype=np.int16).astype(np.float32) / 32768.0
 
 
 def process_job(job_id, source_lang, target_lang):
@@ -59,37 +45,37 @@ def process_job(job_id, source_lang, target_lang):
         if input_path is None:
             raise FileNotFoundError("No input file found in job directory")
 
-        model = whisper.load_model("small")
+        from faster_whisper import WhisperModel
+        # tiny int8: ~150MB peak RAM — fits Railway 512MB with headroom
+        model = WhisperModel("tiny", device="cpu", compute_type="int8")
 
-        jobs[job_id]["progress"] = 25
+        jobs[job_id]["progress"] = 20
         jobs[job_id]["message"] = "Transcribing audio..."
 
-        audio = load_audio_with_ffmpeg(ffmpeg_exe, input_path)
+        kwargs = {}
+        if source_lang != "auto":
+            kwargs["language"] = source_lang
 
-        # When target is English, use Whisper's native translation (far more accurate)
         if target_lang == "en":
-            kwargs = {"task": "translate"}
-            if source_lang != "auto":
-                kwargs["language"] = source_lang
-            result = model.transcribe(audio, **kwargs)
-            use_whisper_translation = True
-        else:
-            kwargs = {}
-            if source_lang != "auto":
-                kwargs["language"] = source_lang
-            result = model.transcribe(audio, **kwargs)
-            use_whisper_translation = False
+            kwargs["task"] = "translate"
+
+        segments_gen, _ = model.transcribe(input_path, **kwargs)
+        segments = list(segments_gen)
+
+        # Free model memory immediately before translation
+        del model
+        gc.collect()
 
         jobs[job_id]["progress"] = 50
         jobs[job_id]["message"] = "Translating..."
 
         srt_lines = []
-        for i, seg in enumerate(result["segments"], 1):
-            text = seg["text"].strip()
-            if not use_whisper_translation:
+        for i, seg in enumerate(segments, 1):
+            text = seg.text.strip()
+            if target_lang != "en":
                 text = GoogleTranslator(source="auto", target=target_lang).translate(text)
             srt_lines.append(str(i))
-            srt_lines.append(f'{fmt_time(seg["start"])} --> {fmt_time(seg["end"])}')
+            srt_lines.append(f"{fmt_time(seg.start)} --> {fmt_time(seg.end)}")
             srt_lines.append(text)
             srt_lines.append("")
 
@@ -102,11 +88,7 @@ def process_job(job_id, source_lang, target_lang):
         jobs[job_id]["message"] = "Burning subtitles..."
 
         output_path = os.path.join(JOBS_DIR, job_id, "output.mp4")
-
-        # Escape path for ffmpeg subtitles filter: backslashes → forward slashes, colons escaped
         escaped = srt_path.replace("\\", "/").replace(":", "\\\\:")
-
-        # force_style commas must be escaped with \ when not going through a shell
         style = "FontSize=24\\,PrimaryColour=&H00FFFFFF\\,OutlineColour=&H00000000\\,Outline=2\\,Shadow=1"
 
         cmd = [
@@ -126,8 +108,7 @@ def process_job(job_id, source_lang, target_lang):
             jobs[job_id]["status"] = "done"
             jobs[job_id]["progress"] = 100
             jobs[job_id]["output_path"] = output_path
-            # Store last 300 chars of stderr for debugging even on success
-            jobs[job_id]["message"] = "Done! | " + result2.stderr[-300:].replace("\n", " ")
+            jobs[job_id]["message"] = "Done!"
 
     except Exception as e:
         jobs[job_id]["status"] = "error"
