@@ -52,7 +52,7 @@ def _build_drawtext_filter(srt_path):
         end = _srt_to_seconds(m.group(2))
         text = " ".join(lines[2:]).strip()
         # Escape chars that break ffmpeg drawtext option parsing
-        text = text.replace("\\", "\\\\").replace("'", "’").replace(":", "\\:").replace("%", "\\%")
+        text = text.replace("\\", "\\\\").replace("’", "’").replace(":", "\\:").replace("%", "\\%")
         entries.append((start, end, text))
 
     if not entries:
