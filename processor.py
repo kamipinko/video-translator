@@ -1,6 +1,7 @@
 import subprocess
 import threading
 import os
+import re
 import gc
 from deep_translator import GoogleTranslator
 
@@ -25,6 +26,59 @@ def _get_ffmpeg():
         return system_ffmpeg
     import imageio_ffmpeg
     return imageio_ffmpeg.get_ffmpeg_exe()
+
+
+def _srt_to_seconds(ts):
+    h, m, rest = ts.split(":")
+    s, ms = rest.split(",")
+    return int(h) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000
+
+
+def _build_drawtext_filter(srt_path):
+    """Build ffmpeg drawtext filter from SRT file. No libass required."""
+    with open(srt_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    blocks = re.split(r"\n\n+", content.strip())
+    entries = []
+    for block in blocks:
+        lines = block.strip().split("\n")
+        if len(lines) < 3:
+            continue
+        m = re.match(r"(\d+:\d+:\d+,\d+) --> (\d+:\d+:\d+,\d+)", lines[1])
+        if not m:
+            continue
+        start = _srt_to_seconds(m.group(1))
+        end = _srt_to_seconds(m.group(2))
+        text = " ".join(lines[2:]).strip()
+        # Escape chars that break ffmpeg drawtext option parsing
+        text = text.replace("\\", "\\\\").replace("'", "’").replace(":", "\\:").replace("%", "\\%")
+        entries.append((start, end, text))
+
+    if not entries:
+        return None
+
+    # Try to use a known font path on Linux; fallback to no fontfile (uses first available)
+    font_part = ""
+    for candidate in [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+    ]:
+        if os.path.exists(candidate):
+            font_part = f":fontfile={candidate}"
+            break
+
+    filters = []
+    for start, end, text in entries:
+        filters.append(
+            f"drawtext=text='{text}'{font_part}"
+            f":x=(w-text_w)/2:y=h-80"
+            f":fontsize=24:fontcolor=white"
+            f":borderw=2:bordercolor=black"
+            f":enable='between(t,{start},{end})'"
+        )
+
+    return ",".join(filters)
 
 
 def process_job(job_id, source_lang, target_lang):
@@ -62,7 +116,6 @@ def process_job(job_id, source_lang, target_lang):
         segments_gen, _ = model.transcribe(input_path, **kwargs)
         segments = list(segments_gen)
 
-        # Free model memory immediately before translation
         del model
         gc.collect()
 
@@ -88,19 +141,13 @@ def process_job(job_id, source_lang, target_lang):
         jobs[job_id]["message"] = "Burning subtitles..."
 
         output_path = os.path.join(JOBS_DIR, job_id, "output.mp4")
-        escaped = srt_path.replace("\\", "/").replace(":", "\\\\:")
-        style = "FontSize=24\\,PrimaryColour=&H00FFFFFF\\,OutlineColour=&H00000000\\,Outline=2\\,Shadow=1"
+        vf = _build_drawtext_filter(srt_path)
 
-        fonts_dir = "/usr/share/fonts" if os.name != "nt" else ""
-        vf = f"subtitles={escaped}:fontsdir={fonts_dir}:force_style={style}" if fonts_dir else f"subtitles={escaped}:force_style={style}"
-
-        cmd = [
-            ffmpeg_exe, "-y",
-            "-i", input_path,
-            "-vf", vf,
-            "-c:a", "copy",
-            output_path
-        ]
+        if vf:
+            cmd = [ffmpeg_exe, "-y", "-i", input_path, "-vf", vf, "-c:a", "copy", output_path]
+        else:
+            # No segments — copy video unchanged
+            cmd = [ffmpeg_exe, "-y", "-i", input_path, "-c", "copy", output_path]
 
         result2 = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
 
