@@ -111,7 +111,7 @@ def process_job(job_id, source_lang, target_lang):
             jobs[job_id]["status"] = "done"
             jobs[job_id]["progress"] = 100
             jobs[job_id]["output_path"] = output_path
-            jobs[job_id]["message"] = "Done!"
+            jobs[job_id]["message"] = f"Done! ({len(segments)} segments)"
 
     except Exception as e:
         jobs[job_id]["status"] = "error"

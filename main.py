@@ -87,6 +87,16 @@ async def status(job_id: str):
     return JSONResponse(processor.jobs[job_id])
 
 
+@app.get("/srt/{job_id}")
+async def get_srt(job_id: str):
+    srt_path = os.path.join(JOBS_DIR, job_id, "subtitles.srt")
+    if not os.path.exists(srt_path):
+        return JSONResponse({"error": "SRT not found"}, status_code=404)
+    with open(srt_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    return JSONResponse({"content": content, "bytes": len(content)})
+
+
 @app.get("/download/{job_id}")
 async def download(job_id: str):
     job = processor.jobs.get(job_id)
