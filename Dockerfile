@@ -2,7 +2,8 @@ FROM python:3.11-slim
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ffmpeg libass9 libgomp1 fonts-dejavu-core fontconfig && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && \
+    fc-cache -fv
 
 WORKDIR /app
 

@@ -91,10 +91,13 @@ def process_job(job_id, source_lang, target_lang):
         escaped = srt_path.replace("\\", "/").replace(":", "\\\\:")
         style = "FontSize=24\\,PrimaryColour=&H00FFFFFF\\,OutlineColour=&H00000000\\,Outline=2\\,Shadow=1"
 
+        fonts_dir = "/usr/share/fonts" if os.name != "nt" else ""
+        vf = f"subtitles={escaped}:fontsdir={fonts_dir}:force_style={style}" if fonts_dir else f"subtitles={escaped}:force_style={style}"
+
         cmd = [
             ffmpeg_exe, "-y",
             "-i", input_path,
-            "-vf", f"subtitles={escaped}:force_style={style}",
+            "-vf", vf,
             "-c:a", "copy",
             output_path
         ]
