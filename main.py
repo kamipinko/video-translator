@@ -27,6 +27,19 @@ app.add_middleware(
 )
 
 
+@app.get("/health")
+async def health():
+    return JSONResponse({
+        "version": "2.0-claude",
+        "whisper_device": os.environ.get("WHISPER_DEVICE", "auto"),
+        "whisper_model": os.environ.get("WHISPER_MODEL", "large-v3-turbo"),
+        "whisper_model_cpu": os.environ.get("WHISPER_MODEL_CPU", "tiny"),
+        "claude_model": os.environ.get("CLAUDE_MODEL", "claude-sonnet-5"),
+        "claude_transport": "api" if os.environ.get("ANTHROPIC_API_KEY") else "cli",
+        "engine_last_run": processor.engine_info,
+    })
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index():
     with open("index.html", "r", encoding="utf-8") as f:
