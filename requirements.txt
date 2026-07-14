@@ -5,3 +5,4 @@ anthropic
 yt-dlp
 python-multipart
 imageio-ffmpeg
+Pillow

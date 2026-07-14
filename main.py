@@ -27,16 +27,30 @@ app.add_middleware(
 )
 
 
+def _download_name(original_name, strip_ext=True):
+    """'interview_ep3.mp4' -> 'interview_ep3 (translated).mp4'.
+    Preserves the original basename exactly (spaces and all); strips only
+    characters the filesystem/HTTP header truly forbids. For yt-dlp titles
+    (not filenames) pass strip_ext=False."""
+    import re
+    stem = os.path.basename(original_name or "")
+    if strip_ext:
+        stem = os.path.splitext(stem)[0]
+    stem = re.sub(r'[\\/:*?"<>|\r\n\t]', "", stem).strip() or "video"
+    return f"{stem} (translated).mp4"
+
+
 @app.get("/health")
 async def health():
     return JSONResponse({
-        "version": "2.0-claude",
+        "version": "2.1-fit-coverage",
         "whisper_device": os.environ.get("WHISPER_DEVICE", "auto"),
         "whisper_model": os.environ.get("WHISPER_MODEL", "large-v3-turbo"),
         "whisper_model_cpu": os.environ.get("WHISPER_MODEL_CPU", "tiny"),
         "claude_model": os.environ.get("CLAUDE_MODEL", "claude-sonnet-5"),
         "claude_transport": "api" if os.environ.get("ANTHROPIC_API_KEY") else "cli",
         "engine_last_run": processor.engine_info,
+        "coverage_last_run": processor.last_coverage,
     })
 
 
@@ -62,6 +76,7 @@ async def translate(
         "progress": 0,
         "message": "Queued",
         "output_path": None,
+        "download_name": "video (translated).mp4",
     }
 
     try:
@@ -75,12 +90,15 @@ async def translate(
             if os.name == "nt":
                 ydl_opts["cookiesfrombrowser"] = ("chrome",)
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
+                info = ydl.extract_info(url, download=True)
+                title = (info or {}).get("title") or "video"
+                processor.jobs[job_id]["download_name"] = _download_name(title, strip_ext=False)
         elif file:
             contents = await file.read()
             input_path = os.path.join(job_dir, "input.mp4")
             with open(input_path, "wb") as f:
                 f.write(contents)
+            processor.jobs[job_id]["download_name"] = _download_name(file.filename)
         else:
             return JSONResponse({"error": "No file or URL provided"}, status_code=400)
     except Exception as e:
@@ -115,7 +133,8 @@ async def download(job_id: str):
     job = processor.jobs.get(job_id)
     if not job or job["status"] != "done":
         return JSONResponse({"error": "Job not ready"}, status_code=404)
-    return FileResponse(job["output_path"], media_type="video/mp4", filename="translated.mp4")
+    return FileResponse(job["output_path"], media_type="video/mp4",
+                        filename=job.get("download_name") or "video (translated).mp4")
 
 
 if __name__ == "__main__":

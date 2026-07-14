@@ -42,6 +42,14 @@ LANG_NAMES = {
 # cumulative usage for cost reporting (API path only)
 usage_totals = {"input_tokens": 0, "output_tokens": 0, "requests": 0}
 
+# v2.1: per-run report — lines that fell back to source text after all
+# retries (NEVER a silent gap; the caller surfaces these as a warning)
+last_report = {"fallbacks": []}
+
+
+class _Truncated(Exception):
+    """Model output hit max_tokens — retry with a smaller chunk."""
+
 
 def _lang_name(code):
     return LANG_NAMES.get(code, code)
@@ -101,7 +109,7 @@ def _call_api(system, user, model):
         kwargs["thinking"] = {"type": "disabled"}
     resp = client.messages.create(
         model=model,
-        max_tokens=8000,
+        max_tokens=16000,
         system=system,
         messages=[{"role": "user", "content": user}],
         output_config={
@@ -124,6 +132,8 @@ def _call_api(system, user, model):
     usage_totals["requests"] += 1
     if resp.stop_reason == "refusal":
         raise RuntimeError("Claude refused the translation request")
+    if resp.stop_reason == "max_tokens":
+        raise _Truncated(f"output truncated at max_tokens (model {model})")
     text = next(b.text for b in resp.content if b.type == "text")
     return text
 
@@ -168,37 +178,69 @@ def _call_claude(system, user, model):
 
 # ── public entry point ────────────────────────────────────────────────────────
 
+def _translate_chunk(chunk, before, after, system, model, retries=3):
+    """
+    Translate one chunk with a HARD count invariant (len out == len chunk).
+    Repair ladder — never returns a silent gap:
+      1. up to `retries` straight attempts (count mismatch / bad JSON /
+         empty strings / truncation all count as failures)
+      2. split the chunk in half and recurse (also defeats max_tokens
+         truncation on big chunks)
+      3. a single cue that still fails falls back to its SOURCE text and is
+         recorded in last_report["fallbacks"] (caller surfaces a warning) —
+         something always renders.
+    """
+    last_err = None
+    for _ in range(retries):
+        try:
+            raw = _call_claude(system, _chunk_prompt(chunk, before, after), model)
+            data = _extract_json(raw)
+            t = data["translations"]
+            if len(t) != len(chunk):
+                raise ValueError(f"expected {len(chunk)} translations, got {len(t)}")
+            t = [str(x).strip() for x in t]
+            if any(not x for x in t):
+                raise ValueError("empty translation string(s) in response")
+            return t
+        except _Truncated as e:
+            last_err = e
+            break  # bigger context won't help — go straight to halving
+        except Exception as e:  # noqa: BLE001 — retry then repair
+            last_err = e
+    if len(chunk) > 1:
+        print(f"[translate] chunk of {len(chunk)} failed ({last_err}) — "
+              f"splitting and retrying halves", flush=True)
+        mid = len(chunk) // 2
+        left = _translate_chunk(chunk[:mid], before, chunk[mid:mid + CONTEXT_LINES],
+                                system, model, retries)
+        right = _translate_chunk(chunk[mid:], chunk[max(0, mid - CONTEXT_LINES):mid],
+                                 after, system, model, retries)
+        return left + right
+    # single cue, all retries burned: fall back to source text, LOUDLY
+    print(f"[translate] WARNING: line untranslatable after retries "
+          f"({last_err}) — keeping source text: {chunk[0][:80]!r}", flush=True)
+    last_report["fallbacks"].append(chunk[0])
+    return [chunk[0]]
+
+
 def translate_lines(lines, target_lang, source_lang="auto",
                     model=None, progress_cb=None):
-    """Translate a list of subtitle cue texts. Returns list of same length."""
+    """Translate a list of subtitle cue texts. ALWAYS returns a list of the
+    same length (untranslatable lines fall back to source text, reported in
+    last_report['fallbacks'])."""
     if not lines:
         return []
     model = model or DEFAULT_MODEL
     system = _system_prompt(target_lang, source_lang)
+    last_report["fallbacks"] = []
     out = []
     chunks = [lines[i:i + CHUNK_SIZE] for i in range(0, len(lines), CHUNK_SIZE)]
     for ci, chunk in enumerate(chunks):
         before = lines[max(0, ci * CHUNK_SIZE - CONTEXT_LINES): ci * CHUNK_SIZE]
         after_start = (ci + 1) * CHUNK_SIZE
         after = lines[after_start: after_start + CONTEXT_LINES]
-        user = _chunk_prompt(chunk, before, after)
-
-        translations = None
-        last_err = None
-        for attempt in range(3):
-            try:
-                raw = _call_claude(system, user, model)
-                data = _extract_json(raw)
-                t = data["translations"]
-                if len(t) != len(chunk):
-                    raise ValueError(f"expected {len(chunk)} translations, got {len(t)}")
-                translations = [str(x).strip() for x in t]
-                break
-            except Exception as e:  # noqa: BLE001 — retry then surface
-                last_err = e
-        if translations is None:
-            raise RuntimeError(f"translation chunk {ci + 1}/{len(chunks)} failed: {last_err}")
-        out.extend(translations)
+        out.extend(_translate_chunk(chunk, before, after, system, model))
         if progress_cb:
             progress_cb(ci + 1, len(chunks))
+    assert len(out) == len(lines), f"count invariant broken: {len(lines)} in, {len(out)} out"
     return out
