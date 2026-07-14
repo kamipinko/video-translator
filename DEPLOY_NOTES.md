@@ -1,3 +1,19 @@
+# DEPLOY NOTES — v2.1 field fixes (2026-07-14, same day as v2.0)
+
+Pinko field report: (1) words cut off at the sides, (2) a multi-speaker
+section had no captions at all.
+
+| Fix | Detail |
+|---|---|
+| Caption fit | `.ass` PlayResX/Y now = ACTUAL video dims (fixed 1920x1080 grid rendered 1.78x oversize on 9:16 verticals and hard-clipped: WrapStyle 2 never wraps). Fontsize keys off min-dimension (64 @ 1080). 6% side margins. Line breaks are PIXEL-measured with the bundled Manga TTF via PIL (`text_px`), not 42 chars. Per-cue `\fs` auto-shrink to a 60% floor; words wider than a line hard-break (also covers CJK); WrapStyle 0 as final safety net. |
+| Crosstalk coverage | VAD threshold 0.5→0.35, `condition_on_previous_text=False`, `no_speech_threshold` 0.6→0.8; GAP-RESCUE pass re-transcribes any VAD speech region <40% covered by cues (isolated audio slice, fresh decoder context); speech-coverage % measured and surfaced in job message + `/health.coverage_last_run`. True per-speaker crosstalk transcription needs diarization = v2.2 candidate. |
+| Translation invariants | HARD count invariant (cues in == translations out, asserted in processor AND translate_llm); repair ladder: 3 retries → split chunk in half → single-cue source-text fallback recorded in `last_report["fallbacks"]` and surfaced as a job WARNING — never a silent untranslated gap. `stop_reason=max_tokens` detected (truncation → halve chunk); max_tokens 8000→16000. Empty-string translations treated as failures. |
+| Download name | `interview_ep3.mp4` → `interview_ep3 (translated).mp4` (original basename preserved, only forbidden chars stripped; yt-dlp jobs use the video title). Served via Content-Disposition. |
+| Gotcha | VAD hands back numpy scalars — cast to float before putting stats in job dicts or FastAPI JSON dies. |
+
+`/health` version: **`2.1-fit-coverage`**. New dep: Pillow.
+Deploy: `railway up --detach` (GitHub auto-deploy still dead).
+
 # DEPLOY NOTES — Language Pipeline Overhaul v2.0 (2026-07-14)
 
 **Deploy to Railway AUTHORIZED by Pinko (amended orders, relayed 2026-07-14).**
