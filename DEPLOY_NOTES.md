@@ -33,7 +33,9 @@ Files: `processor.py`, `subtitles.py` (new), `translate_llm.py` (new), `main.py`
 1. `railway link --project 490faaad-… --service video-translator` (CLI; the
    GraphQL token in `~/.railway/config.json` is DEAD — use the CLI)
 2. `railway variables --set … --skip-deploys` (the vars above)
-3. `git push origin master` → auto-deploy
+3. ⚠️ GitHub→Railway auto-deploy is DEAD (deployment list was stuck at May 7).
+   Deploy with `railway up --detach` from the repo root instead (uses
+   `.railwayignore`; builds the local tree with the Dockerfile).
 4. Verify: `GET /health` returns `"version": "2.0-claude"` + transport `api`
 5. Live E2E: POST /translate small clip → poll /status → /download → frame QC
 
